@@ -8,7 +8,7 @@ use Carp qw(cluck croak);
 use LWP::UserAgent;
 use JSON::Any;
 
-our $base_url = 'http://alpha-api.app.net/stream/0/';
+our $base_url = 'https://alpha-api.app.net/stream/0/';
 our $app_token_url = 'https://account.app.net/oauth/access_token';
 
 =head1 NAME
@@ -66,6 +66,10 @@ sub new {
 sub api_request {
     my ($self, $type, $path, %opts) = @_;
 
+    if ($opts{params}) {
+        $path .= '?' . urlify_hash(%{$opts{params}});
+    };
+
     my $request = HTTP::Request->new(
         $type => ($path =~ /^http/) ? $path : $self->{url_base}.$path
     );
@@ -73,22 +77,47 @@ sub api_request {
     $request->header(Authorization => 'Bearer '.$self->{token}) if $self->{token};
     
     if ($type eq 'POST' && $opts{formdata}) {
-        $request->content($opts{formdata});
-        $request->header('Content-Length' => length($opts{formdata}));
+        my $formdata = urlify_hash(%{$opts{formdata}});
+        $request->content($formdata);
+        $request->header('Content-Length' => length($formdata));
         $request->header('Content-Type' => 'application/x-www-form-urlencoded');
     }
-    
+
     my $response = $self->{ua}->request($request);
     
     if ($response->code != 200) {
         # XXX set error
-        $self->{error} = $response ->code." ".$response->content;
+        $self->{error} = $response ->code." ".$response->message." ".$response->as_string;
         return;
     }
     
     my $j = JSON::Any->new;
     
     return $j->jsonToObj( $response->decoded_content );
+}
+
+sub paginated_request {
+    my ($self, $type, $path, %opts) = @_;
+    my %reqopts = $opts{params} ? %{$opts{params}} : ();
+    $reqopts{count} ||= $opts{count} if $opts{count};
+    if ($opts{all}) {
+        #$reqopts{since_id} = 0;
+        my @results;
+        my $more = 1;
+        while ($more) {
+            my $response = $self->api_request($type, $path, params => \%reqopts);
+            return unless $response;
+            warn "Got ".scalar(@{$response->{data}})." responses.\n";
+            push(@results, @{$response->{data}});
+            $more = $response->{meta}->{more};
+            $reqopts{before_id} = $response->{meta}->{min_id};
+        }
+        return wantarray ? @results : { data => \@results };
+    } else {
+         my $response = $self->api_request($type, $path, params => \%reqopts);
+         return unless $response;
+         return wantarray ? @{$response->{data}} : $response;
+    }
 }
 
 sub get_app_token {
@@ -99,9 +128,8 @@ sub get_app_token {
         client_secret => $secret,
         grant_type => 'client_credentials',
     );
-    my $data = join ('&', map { sprintf("%s=%s", $_, $postdata{$_}) } keys %postdata);
     
-    my $response = $self->api_request('POST', $app_token_url, formdata => $data);
+    my $response = $self->api_request('POST', $app_token_url, formdata => \%postdata);
 
     if ($response) {
         $self->{token} = $response->{access_token};
@@ -119,6 +147,11 @@ sub as_user {
     $usercall{error} = undef;
     
     return bless \%usercall, ref($self);
+}
+
+sub urlify_hash {
+    my (%params) = @_;
+    my $data = join ('&', map { sprintf("%s=%s", $_, $params{$_}) } keys %params);
 }
 
 sub last_error {
