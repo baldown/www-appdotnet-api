@@ -83,11 +83,14 @@ sub api_request {
         $request->header('Content-Type' => 'application/x-www-form-urlencoded');
     }
 
+    warn "Requesting ".$request->url."\n" if $opts{debug};
+
     my $response = $self->{ua}->request($request);
     
     if ($response->code != 200) {
         # XXX set error
-        $self->{error} = $response ->code." ".$response->message." ".$response->as_string;
+        $self->{error} = $response->code." ".$response->message;
+        warn $response->as_string if $opts{debug}
         return;
     }
     
