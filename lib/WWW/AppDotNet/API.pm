@@ -108,16 +108,16 @@ sub paginated_request {
         my @results;
         my $more = 1;
         while ($more) {
-            my $response = $self->api_request($type, $path, params => \%reqopts);
+            my $response = $self->api_request($type, $path, params => \%reqopts, debug => $opts{debug});
             return unless $response;
-            warn "Got ".scalar(@{$response->{data}})." responses.\n";
+            warn "Got ".scalar(@{$response->{data}})." responses.\n" if $opts{debug};
             push(@results, @{$response->{data}});
             $more = $response->{meta}->{more};
             $reqopts{before_id} = $response->{meta}->{min_id};
         }
         return wantarray ? @results : { data => \@results };
     } else {
-         my $response = $self->api_request($type, $path, params => \%reqopts);
+         my $response = $self->api_request($type, $path, params => \%reqopts, debug => $opts{debug});
          return unless $response;
          return wantarray ? @{$response->{data}} : $response;
     }
