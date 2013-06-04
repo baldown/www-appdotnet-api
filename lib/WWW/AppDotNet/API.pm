@@ -90,7 +90,7 @@ sub api_request {
     if ($response->code != 200) {
         # XXX set error
         $self->{error} = $response->code." ".$response->message;
-        warn $response->as_string if $opts{debug}
+        warn $response->as_string if $opts{debug};
         return;
     }
     
