@@ -38,13 +38,22 @@ Perhaps a little code snippet.
 
 =cut
 
+sub debug_log {
+    my ($self, @opts) = @_;
+    if ($self->{context}) {
+        $self->{context}->log->warn(@opts);
+    } else {
+        warn @opts;
+    }
+}
+
 sub new {
     my ($class, %opts) = @_;
     my $self = {
         ua => LWP::UserAgent->new(),
         url_base => $opts{base_url} || $base_url,
         error => undef,
-        
+        debug => $opts{debug},
     };
     $self = bless $self, $class;
     
@@ -83,14 +92,14 @@ sub api_request {
         $request->header('Content-Type' => 'application/x-www-form-urlencoded');
     }
 
-    warn "Requesting ".$request->url."\n" if $opts{debug};
+    $self->debug_log("Requesting ".$request->url."\n") if $self->{debug};
 
     my $response = $self->{ua}->request($request);
     
     if ($response->code != 200) {
         # XXX set error
         $self->{error} = $response->code." ".$response->message;
-        warn $response->as_string if $opts{debug};
+        $self->debug_log($response->as_string) if $self->{debug};
         return;
     }
     
@@ -108,16 +117,16 @@ sub paginated_request {
         my @results;
         my $more = 1;
         while ($more) {
-            my $response = $self->api_request($type, $path, params => \%reqopts, debug => $opts{debug});
+            my $response = $self->api_request($type, $path, params => \%reqopts);
             return unless $response;
-            warn "Got ".scalar(@{$response->{data}})." responses.\n" if $opts{debug};
+            $self->debug_log("Got ".scalar(@{$response->{data}})." responses.\n") if $self->{debug};
             push(@results, @{$response->{data}});
             $more = $response->{meta}->{more};
             $reqopts{before_id} = $response->{meta}->{min_id};
         }
         return wantarray ? @results : { data => \@results };
     } else {
-         my $response = $self->api_request($type, $path, params => \%reqopts, debug => $opts{debug});
+         my $response = $self->api_request($type, $path, params => \%reqopts);
          return unless $response;
          return wantarray ? @{$response->{data}} : $response;
     }
