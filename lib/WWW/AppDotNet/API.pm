@@ -75,6 +75,8 @@ sub new {
 sub api_request {
     my ($self, $type, $path, %opts) = @_;
 
+    $self->debug_log("Request options: ".Data::Dumper::Dumper(\%opts)) if $self->{debug};
+
     if ($opts{params}) {
         $path .= '?' . urlify_hash(%{$opts{params}});
     };
@@ -86,13 +88,21 @@ sub api_request {
     $request->header(Authorization => 'Bearer '.$self->{token}) if $self->{token};
     
     if ($type eq 'POST' && $opts{formdata}) {
-        my $formdata = urlify_hash(%{$opts{formdata}});
-        $request->content($formdata);
-        $request->header('Content-Length' => length($formdata));
-        $request->header('Content-Type' => 'application/x-www-form-urlencoded');
+        if ($opts{postjson}) {
+            my $j = JSON::Any->new;
+            my $json = $j->objToJson($opts{formdata});
+            $self->debug_log($json);
+            $request->content($json);
+            $request->header('Content-Type' => 'application/json');
+        } else {
+            my $formdata = urlify_hash(%{$opts{formdata}});
+            $request->content($formdata);
+            $request->header('Content-Type' => 'application/x-www-form-urlencoded');
+        }
+        $request->header('Content-Length' => length($request->content));
     }
 
-    $self->debug_log("Requesting ".$request->url."\n") if $self->{debug};
+    $self->debug_log("Sending request:\n".$request->as_string."\n") if $self->{debug};
 
     my $response = $self->{ua}->request($request);
     
