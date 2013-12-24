@@ -1,9 +1,9 @@
 package WWW::AppDotNet::API;
 
-use 5.006;
 use strict;
 use warnings FATAL => 'all';
 
+use Moose;
 use Carp qw(cluck croak);
 use LWP::UserAgent;
 use JSON::Any;
@@ -21,7 +21,7 @@ Version 0.01
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.80';
 
 =head1 SYNOPSIS
 
@@ -38,80 +38,107 @@ Perhaps a little code snippet.
 
 =cut
 
-sub debug_log {
-    my ($self, @opts) = @_;
-    if ($self->{context}) {
-        $self->{context}->log->warn(@opts);
-    } else {
-        warn @opts;
-    }
-}
+has 'ua' => ( is => 'rw', isa => 'LWP::UserAgent' );
+has 'error' => ( is => 'rw', isa => 'Str' );
+has 'type' => ( is => 'rw', isa => 'Str' );
+has 'token' => ( is => 'rw', isa => 'Str' );
+
+=head2 new
+
+=cut
 
 sub new {
-    my ($class, %opts) = @_;
-    my $self = {
-        ua => LWP::UserAgent->new(),
-        url_base => $opts{base_url} || $base_url,
-        error => undef,
-        debug => $opts{debug},
-    };
-    $self = bless $self, $class;
-    
-    $self->{ua}->timeout(15);
-    $self->{ua}->agent("WWW::AppDotNet::API $VERSION");
+    my ($class, %options) = @_;
 
-    if ($opts{token}) {
-        $self->{token} = $opts{token};
-    } elsif ($opts{client_id} && $opts{client_secret}) {
-        $self->{token} = $self->get_app_token($opts{client_id}, $opts{client_secret});
+    my $self = $class->SUPER::new;
+
+    if ($options{token}) {
+        $self->type('user');
+        $self->token($options{token});
+    } elsif ($options{client_id}) {
+        Carp::croak "You must supply both a client_id and client_secret to $class\->new!" unless $options{client_secret};
+        $self->type('app');
+        self->get_app_token($options{client_id}, $options{client_secret});
+    } elsif ($options{public}) {
+        $self->type('public');
     } else {
-        croak("Unable to initialize $class: no token or client id and secret provided.");
-        return;
+        Carp::croak "Not enough options to create new $class object.  Must specify one of token, client_id and client_secret, or public.";
     }
     
+    $self->setup_useragent;
+
     return $self;
 }
 
-sub api_request {
-    my ($self, $type, $path, %opts) = @_;
+sub setup_useragent {
+    my ($self) = @_;
+    
+    my $ua = LWP::UserAgent->new;
+    
+    $ua->timeout(15);
+    $ua->agent("WWW::AppDotNet::API $VERSION");
+    
+    if ($self->token) {
+        $ua->default_header(Authorization => 'Bearer '.$self->token);
+    }
+    
+    $self->ua($ua);
+}
 
-    $self->debug_log("Request options: ".Data::Dumper::Dumper(\%opts)) if $self->{debug};
+sub request {
+    my ($self, %options) = @_;
+    
+    my $request = $self->build_request(%options);
+    
+    my $response = $self->send_request($request);
+    
+    if ($response->code != 200) {
+        $self->error($response->code." ".$response->message);
+        return;
+    }
+    
+    return $self->process_response($response);
+}
 
-    if ($opts{params}) {
-        $path .= '?' . urlify_hash(%{$opts{params}});
-    };
-
+sub build_request {
+    my ($self, %options) = @_;
+    
+    Carp::croak 'Insufficient parameters to build ADN Request object.' unless$options{url};
+    
+    my $path = ($options{url} =~ /^http/) ? $options{url} : $base_url.$options{url};
+    
     my $request = HTTP::Request->new(
-        $type => ($path =~ /^http/) ? $path : $self->{url_base}.$path
-    );
+        ($options{method} || 'GET') => $path);
+        
+    if ($options{params}) {
+        $request->uri($request->uri . '?' . urlify_hash(%{$options{params}}));
+    };
     
-    $request->header(Authorization => 'Bearer '.$self->{token}) if $self->{token};
-    
-    if ($type eq 'POST' && $opts{formdata}) {
-        if ($opts{postjson}) {
+    if ($request->method eq 'POST' && $options{formdata}) {
+        if ($options{postjson}) {
             my $j = JSON::Any->new;
-            my $json = $j->objToJson($opts{formdata});
-            $self->debug_log($json);
+            my $json = $j->objToJson($options{formdata});
             $request->content($json);
             $request->header('Content-Type' => 'application/json');
         } else {
-            my $formdata = urlify_hash(%{$opts{formdata}});
+            my $formdata = urlify_hash(%{$options{formdata}});
             $request->content($formdata);
             $request->header('Content-Type' => 'application/x-www-form-urlencoded');
         }
         $request->header('Content-Length' => length($request->content));
     }
-
-    $self->debug_log("Sending request:\n".$request->as_string."\n") if $self->{debug};
-
-    my $response = $self->{ua}->request($request);
     
-    if ($response->code != 200) {
-        # XXX set error
-        $self->{error} = $response->code." ".$response->message;
-        $self->debug_log($response->as_string) if $self->{debug};
-        return;
-    }
+    return $request;
+}
+
+sub send_request {
+    my ($self, $request) = @_;
+    
+    my $response = $self->ua->request($request);
+}
+
+sub process_response {
+    my ($self, $response) = @_;
     
     my $j = JSON::Any->new;
     
@@ -127,7 +154,7 @@ sub paginated_request {
         my @results;
         my $more = 1;
         while ($more) {
-            my $response = $self->api_request($type, $path, params => \%reqopts);
+            my $response = $self->request(method => $type, url => $path, params => \%reqopts);
             return unless $response;
             $self->debug_log("Got ".scalar(@{$response->{data}})." responses.\n") if $self->{debug};
             push(@results, @{$response->{data}});
@@ -151,34 +178,18 @@ sub get_app_token {
         grant_type => 'client_credentials',
     );
     
-    my $response = $self->api_request('POST', $app_token_url, formdata => \%postdata);
+    my $response = $self->request(method =>'POST', url => $app_token_url, formdata => \%postdata);
 
     if ($response) {
-        $self->{token} = $response->{access_token};
+        $self->token($response->{access_token});
     } else {
-        croak "Unable to retrieve app token: ".$self->last_error;
+        croak "Unable to retrieve app token: ".$self->error;
     }
-}
-
-sub as_user {
-    my ($self, $token) = @_;
-    
-    my %usercall = %$self;
-    
-    $usercall{token} = $token;
-    $usercall{error} = undef;
-    
-    return bless \%usercall, ref($self);
 }
 
 sub urlify_hash {
     my (%params) = @_;
     my $data = join ('&', map { sprintf("%s=%s", $_, $params{$_}) } keys %params);
-}
-
-sub last_error {
-    my ($self) = @_;
-    return $self->{error};
 }
 
 =head1 AUTHOR
@@ -269,5 +280,7 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 =cut
+
+__PACKAGE__->meta->make_immutable(inline_constructor => 0);
 
 1; # End of WWW::AppDotNet::API
