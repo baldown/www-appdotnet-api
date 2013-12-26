@@ -145,6 +145,13 @@ sub process_response {
     return $j->jsonToObj( $response->decoded_content );
 }
 
+sub api_request {
+    my ($self, $method, $url, %args) = @_;
+    
+    Carp::cluck('Use of $api->api_request is deprecated.  Please use $api->request(%params) instead.');
+    $self->request(url => $url, method => $method, %args);
+}
+
 sub paginated_request {
     my ($self, $type, $path, %opts) = @_;
     my %reqopts = $opts{params} ? %{$opts{params}} : ();
