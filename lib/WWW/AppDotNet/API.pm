@@ -7,6 +7,9 @@ use Moose;
 use Carp qw(cluck croak);
 use LWP::UserAgent;
 use JSON::Any;
+use URI;
+use URI::QueryParam;
+use namespace::autoclean;
 
 our $base_url = 'https://alpha-api.app.net/stream/0/';
 our $app_token_url = 'https://account.app.net/oauth/access_token';
@@ -42,6 +45,7 @@ has 'ua' => ( is => 'rw', isa => 'LWP::UserAgent' );
 has 'error' => ( is => 'rw', isa => 'Str' );
 has 'type' => ( is => 'rw', isa => 'Str' );
 has 'token' => ( is => 'rw', isa => 'Str' );
+has 'last_request' => (is => 'rw', isa => 'HTTP::Request');
 
 =head2 new
 
@@ -97,6 +101,8 @@ sub request {
         return;
     }
     
+    $self->last_request($request);
+    
     return $self->process_response($response);
 }
 
@@ -110,22 +116,23 @@ sub build_request {
     my $request = HTTP::Request->new(
         ($options{method} || 'GET') => $path);
         
-    if ($options{params}) {
-        $request->uri($request->uri . '?' . urlify_hash(%{$options{params}}));
-    };
+    $request->uri->query_param(%{$options{params}}) if $options{params};
     
-    if ($request->method eq 'POST' && $options{formdata}) {
-        if ($options{postjson}) {
+    if ($request->method eq 'POST') {
+        if ($options{json}) {
             my $j = JSON::Any->new;
-            my $json = $j->objToJson($options{formdata});
+            my $json = $j->objToJson($options{json});
             $request->content($json);
             $request->header('Content-Type' => 'application/json');
+        } elsif ($options{formdata}) {
+            $request->uri->query_form(%{$options{formdata}});
+            #my $formdata = urlify_hash(%{$options{formdata}});
+            #$request->content($formdata);
+            #$request->header('Content-Type' => 'application/x-www-form-urlencoded');
         } else {
-            my $formdata = urlify_hash(%{$options{formdata}});
-            $request->content($formdata);
-            $request->header('Content-Type' => 'application/x-www-form-urlencoded');
+            Carp::croak 'POST request type specified but neither json nor formdata specified for content.';
         }
-        $request->header('Content-Length' => length($request->content));
+        #$request->header('Content-Length' => length($request->content));
     }
     
     return $request;

@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use Moose;
+use namespace::autoclean;
 
 extends 'WWW::AppDotNet::Object';
 

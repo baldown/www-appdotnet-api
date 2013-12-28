@@ -4,7 +4,9 @@ use strict;
 use warnings;
 
 use Moose;
+use namespace::autoclean;
 use WWW::AppDotNet::API;
+use WWW::AppDotNet::ResultSet;
 
 has 'json' => ( is => 'rw', isa => 'HashRef' );
 has 'api' => ( is => 'rw', isa => 'WWW::AppDotNet::API' );
@@ -57,15 +59,16 @@ sub fetch {
     return unless $response;
     
     if (ref($response->{data}) eq 'ARRAY') {
-        return map { $class->json_to_object($api, $_) } @{$response->{data}};
+        my $set = WWW::AppDotNet::ResultSet->new(
+            api => $api,
+            url => $url,
+            result_class => $class,
+            response => $response
+        );
+        return wantarray ? $set->results : $set;
     } else {
         return $class->json_to_object($api, $response->{data});
     }
-}
-
-sub fetch_all {
-    my $class = shift;
-    
 }
 
 sub create {
@@ -100,19 +103,30 @@ sub build_url {
         %map = %{shift @consumables};
     }
     
-    my @parts = split(m|/|,$pragma, -1);
-    for (my $i = 1; $i < scalar(@parts); $i++) {
-        next if $parts[$i] ne '';
+    my @urlparts;
+    my @pragmaparts = split(m|/|,$pragma, -1);
+    while (scalar(@pragmaparts)) {
+        my $piece = shift @pragmaparts;
+        if ($piece ne '') {
+            push @urlparts, $piece;
+            next;
+        }
+        # Fill the empty
         if (keys %map) {
-            $parts[$i] = $map{$parts[$i - 1]};
-            $parts[$i] //= $map{substr($parts[$i - 1], 0, -1)};
-        } else {
-            Carp::croak "Not enough parameters provided to build URL in $class" unless scalar @consumables;
-            $parts[$i] = shift @consumables;
+            my $fill = $map{$urlparts[-1]} || $map{substr($urlparts[-1], 0, -1)};
+            if (defined $fill) {
+                push @urlparts, $fill;
+            } elsif (scalar(@pragmaparts)) {
+                Carp::croak "Not enough parameters provided to build URL in $class";
+            }
+        } elsif (scalar(@consumables)) {
+            push @urlparts, shift @consumables;
+        } elsif (scalar(@pragmaparts)) {
+            Carp::croak "Not enough parameters provided to build URL in $class";
         }
     }
     
-    return '/'.join('/', @parts);
+    return '/'.join('/', @urlparts);
 }
 
 __PACKAGE__->meta->make_immutable;
