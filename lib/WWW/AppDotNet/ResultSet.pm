@@ -25,24 +25,30 @@ sub results {
 
 sub next {
     my ($self) = @_;
-    return unless $self->more;
+    return 0 unless $self->more;
     my %opts = $self->result_class->request_params;
     $opts{params} //= {};
     $opts{params}->{before_id} = $self->response->{meta}->{min_id};
-    return $self->result_class->fetch($self->api,
+    my $resp = $self->api->request(
         url => $self->url,
         %opts,
     );
+    if ($resp) {
+        $self->response($resp);
+        return 1;
+    } else {
+        warn $self->api->error;
+        return 0;
+    }
 }
 
 sub all {
     my ($self) = @_;
     
-    my $request = $self;
     my @results;
     do {
-        push @results, $request->results;
-    } while ($request = $request->next);
+        push @results, $self->results;
+    } while ($self->next);
     return @results;
 }
 

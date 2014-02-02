@@ -46,10 +46,7 @@ sub fetch {
     my $class = shift;
     my $api = ref($_[0]) ? shift : $class->get_api(@_);
     
-    my $url = $class->build_url(
-        $class->fetch_pragma,
-        @_
-    );
+    my $url = $class->build_url(@_);
     
     my $response = $api->request(
         url => $url,
@@ -63,7 +60,7 @@ sub fetch {
             api => $api,
             url => $url,
             result_class => $class,
-            response => $response
+            response => $response,
         );
         return wantarray ? $set->results : $set;
     } else {
@@ -83,6 +80,7 @@ sub json_to_object {
         json => $json,
         );
 
+    $obj->annotations({});
     if ($json->{annotations}) {
         my %annotations = map { $_->{type} => $_->{value} } @{$json->{annotations}};
         $obj->annotations(\%annotations);
@@ -96,12 +94,14 @@ sub json_to_object {
 sub setup_handler {}
 
 sub build_url {
-    my ($class, $pragma, @consumables) = @_;
+    my ($class, @consumables) = @_;
     
     my %map;
     if (scalar(@consumables) && ref($consumables[0]) eq 'HASH') {
         %map = %{shift @consumables};
     }
+    
+    my $pragma = $class->fetch_pragma(@consumables);
     
     my @urlparts;
     my @pragmaparts = split(m|/|,$pragma, -1);

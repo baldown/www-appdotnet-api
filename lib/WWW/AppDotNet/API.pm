@@ -13,6 +13,7 @@ use namespace::autoclean;
 
 our $base_url = 'https://alpha-api.app.net/stream/0/';
 our $app_token_url = 'https://account.app.net/oauth/access_token';
+our $handle_cache = {};
 
 =head1 NAME
 
@@ -53,6 +54,10 @@ has 'last_request' => (is => 'rw', isa => 'HTTP::Request');
 
 sub new {
     my ($class, %options) = @_;
+   
+    my $cache_key = $class->cache_entry(%options);
+
+    return $handle_cache->{$cache_key} if $cache_key && $handle_cache->{$cache_key};
 
     my $self = $class->SUPER::new;
 
@@ -70,8 +75,19 @@ sub new {
     }
     
     $self->setup_useragent;
+    
+    $handle_cache->{$cache_key} = $self if $cache_key;
 
     return $self;
+}
+
+sub cache_entry {
+    my ($self, %opts) = @_;
+    
+    return 'token:'.$opts{token} if $opts{token};
+    return 'client_id:'.$opts{client_id} if $opts{client_id};
+    return 'public' if $opts{public};
+    return;
 }
 
 sub setup_useragent {
@@ -91,6 +107,8 @@ sub setup_useragent {
 
 sub request {
     my ($self, %options) = @_;
+    
+    $self->error('');
     
     my $request = $self->build_request(%options);
     
@@ -115,8 +133,9 @@ sub build_request {
     
     my $request = HTTP::Request->new(
         ($options{method} || 'GET') => $path);
-        
-    $request->uri->query_param(%{$options{params}}) if $options{params};
+    if ($options{params}) {
+      $request->uri->query_param($_ => $options{params}->{$_}) foreach keys %{$options{params}};
+    }
     
     if ($request->method eq 'POST') {
         if ($options{json}) {

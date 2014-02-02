@@ -23,8 +23,6 @@ is $response->{channel_id}, 8564, 'Message has right channel ID';;
 
 my @objs = WWW::AppDotNet::Test->fetch($api, 8564)->all;
 
-warn scalar(@objs);
-
 ok scalar(@objs), 'Got back multiple results.';
 
 is ref($obj), ref($objs[0]), 'Same type of object returned.';

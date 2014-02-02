@@ -6,15 +6,20 @@ use warnings;
 use Moose;
 
 extends 'WWW::AppDotNet::Channel';
-with 'WWW::AppDotNet::Role::Annotated';
+#with 'WWW::AppDotNet::Role::Annotated';
 
 has 'name'      => (is => 'rw', isa => 'Str');
 has 'url'       => (is => 'rw', isa => 'Str');
 has 'settings'  => (is => 'rw', isa => 'HashRef');
 
-sub fetch_pragma {
+sub request_params {
     my ($class) = @_;
-    return 'channels/'
+    return ( 
+        params => { 
+            include_annotations => 2,
+            channel_types => 'net.blog-app.blog', 
+        },
+    );
 }
 
 sub setup_handler {

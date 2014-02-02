@@ -14,6 +14,16 @@ has 'id'        => (is => 'rw', isa => 'Int');
 has 'type'      => (is => 'rw', isa => 'Str');
 has 'owner'     => (is => 'rw', isa => 'WWW::AppDotNet::User');
 
+sub fetch_pragma {
+    my ($class, @args) = @_;
+    
+    #if (scalar(@consumables) && ref($consumables[0]) eq 'HASH' && $consumables[0]->{user}) {
+    #    return 'users//channels';
+    #} else {
+        return 'channels/';
+    #}
+}
+
 sub setup_handler {
     my ($obj) = @_;
     
