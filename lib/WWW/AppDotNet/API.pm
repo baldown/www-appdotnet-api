@@ -60,6 +60,7 @@ sub new {
     return $handle_cache->{$cache_key} if $cache_key && $handle_cache->{$cache_key};
 
     my $self = $class->SUPER::new;
+    $self->setup_useragent;
 
     if ($options{token}) {
         $self->type('user');
@@ -67,13 +68,12 @@ sub new {
     } elsif ($options{client_id}) {
         Carp::croak "You must supply both a client_id and client_secret to $class\->new!" unless $options{client_secret};
         $self->type('app');
-        self->get_app_token($options{client_id}, $options{client_secret});
+        $self->get_app_token($options{client_id}, $options{client_secret});
     } elsif ($options{public}) {
         $self->type('public');
     } else {
         Carp::croak "Not enough options to create new $class object.  Must specify one of token, client_id and client_secret, or public.";
     }
-    
     $self->setup_useragent;
     
     $handle_cache->{$cache_key} = $self if $cache_key;
@@ -144,10 +144,10 @@ sub build_request {
             $request->content($json);
             $request->header('Content-Type' => 'application/json');
         } elsif ($options{formdata}) {
-            $request->uri->query_form(%{$options{formdata}});
-            #my $formdata = urlify_hash(%{$options{formdata}});
-            #$request->content($formdata);
-            #$request->header('Content-Type' => 'application/x-www-form-urlencoded');
+            #$request->uri->query_form(%{$options{formdata}});
+            my $formdata = urlify_hash(%{$options{formdata}});
+            $request->content($formdata);
+            $request->header('Content-Type' => 'application/x-www-form-urlencoded');
         } else {
             Carp::croak 'POST request type specified but neither json nor formdata specified for content.';
         }
